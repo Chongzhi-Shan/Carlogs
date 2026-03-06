@@ -1,0 +1,220 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="UTF-8">
+  <title>Car01 用车登记</title>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 20px; }
+    #formContainer { display: none; }
+    #welcome { text-align: center; margin-top: 50px; }
+    button { padding: 10px 20px; font-size: 16px; cursor: pointer; }
+    #extraOptions { display: none; margin-top: 10px; padding: 10px; border: 1px solid #ccc; background: #f9f9f9; }
+    table { border-collapse: collapse; width: 100%; margin-top: 20px;}
+    th, td { border: 1px solid #ccc; padding: 5px; text-align: center;}
+  </style>
+</head>
+<body>
+
+  <!-- 欢迎/验证窗口 -->
+  <div id="welcome">
+    <h1>Drive Safe!</h1>
+    <p>点击下方按钮进入用车登记系统</p>
+    <button id="enterBtn">开始登记</button>
+    <p id="status"></p>
+  </div>
+
+  <!-- 表单 + 历史记录 -->
+  <div id="formContainer">
+    <h2>Car01 用车登记</h2>
+
+    <form id="carForm">
+      <label>使用人:</label><br>
+      <input type="text" id="driver" required><br><br>
+
+      <label>当前里程 (km):</label><br>
+      <input type="number" id="odometer" required><br><br>
+
+      <label>目的地:</label><br>
+      <input type="text" id="destination" required><br><br>
+
+      <label>使用目的:</label><br>
+      <input type="text" id="purpose"><br><br>
+
+      <button type="button" id="toggleExtra">更多选项 ▼</button>
+
+      <div id="extraOptions">
+        <label>同乘人:</label><br>
+        <input type="text" id="passengers" placeholder="可选"><br><br>
+
+        <label>车辆是否有瑕疵:</label><br>
+        <select id="vehicleDefect">
+          <option value="">未选择</option>
+          <option value="yes">有瑕疵</option>
+          <option value="no">无瑕疵</option>
+        </select><br><br>
+
+        <label>是否有警告图标:</label><br>
+        <select id="warningIcon">
+          <option value="">未选择</option>
+          <option value="yes">有</option>
+          <option value="no">无</option>
+        </select><br><br>
+      </div>
+
+      <button type="submit">提交</button>
+    </form>
+
+    <p id="statusForm"></p>
+
+    <h3>最近用车记录</h3>
+    <table>
+      <thead>
+        <tr>
+          <th>时间</th>
+          <th>使用人</th>
+          <th>里程</th>
+          <th>目的地</th>
+          <th>用途</th>
+          <th>同乘人</th>
+          <th>瑕疵</th>
+          <th>警告</th>
+        </tr>
+      </thead>
+      <tbody id="logs"></tbody>
+    </table>
+  </div>
+
+  <script>
+    // Firebase 配置
+    const firebaseConfig = {
+      apiKey: "AIzaSyCKptYSiFczJobYebecjDD_--oVDYh0jGg",
+      authDomain: "acevehiclelog.firebaseapp.com",
+      projectId: "acevehiclelog",
+      storageBucket: "acevehiclelog.firebasestorage.app",
+      messagingSenderId: "875926749847",
+      appId: "1:875926749847:web:db570c7bd289ddda449fd2"
+    };
+
+    firebase.initializeApp(firebaseConfig);
+    const db = firebase.firestore();
+    const vehicleId = "Car01";
+
+    // 欢迎界面按钮
+    const enterBtn = document.getElementById('enterBtn');
+    const statusP = document.getElementById('status');
+    const welcomeDiv = document.getElementById('welcome');
+    const formDiv = document.getElementById('formContainer');
+
+    enterBtn.addEventListener('click', async () => {
+      statusP.innerText = "正在验证数据库连接...";
+      try {
+        const testRef = db.collection("test_connection").doc("_temp");
+        await testRef.set({ping: new Date().toISOString()});
+        await testRef.delete();
+
+        // 验证成功，显示表单
+        welcomeDiv.style.display = "none";
+        formDiv.style.display = "block";
+        loadLogs(); // 加载历史记录
+      } catch (err) {
+        console.error(err);
+        statusP.innerText = "无法连接数据库，请检查网络或重试";
+      }
+    });
+
+    // 切换更多选项显示/隐藏
+    const toggleBtn = document.getElementById('toggleExtra');
+    const extraDiv = document.getElementById('extraOptions');
+    toggleBtn.addEventListener('click', () => {
+      if(extraDiv.style.display === "none"){
+        extraDiv.style.display = "block";
+        toggleBtn.innerText = "更多选项 ▲";
+      } else {
+        extraDiv.style.display = "none";
+        toggleBtn.innerText = "更多选项 ▼";
+      }
+    });
+
+    // 加载最近 5 条记录
+    function loadLogs(){
+      const logsContainer = document.getElementById('logs');
+      db.collection("vehicle_logs")
+        .where("vehicle", "==", vehicleId)
+        .orderBy("time", "desc")
+        .limit(5)
+        .get()
+        .then(snapshot => {
+          logsContainer.innerHTML = "";
+          snapshot.forEach(doc => {
+            const d = doc.data();
+            logsContainer.innerHTML += `<tr>
+              <td>${d.time}</td>
+              <td>${d.driver}</td>
+              <td>${d.odometer}</td>
+              <td>${d.destination}</td>
+              <td>${d.purpose}</td>
+              <td>${d.passengers || ""}</td>
+              <td>${d.vehicleDefect || ""}</td>
+              <td>${d.warningIcon || ""}</td>
+            </tr>`;
+          });
+        });
+    }
+
+    // 表单提交
+    const form = document.getElementById('carForm');
+    const statusForm = document.getElementById('statusForm');
+    form.addEventListener('submit', async function(e){
+      e.preventDefault();
+
+      const newOdometer = parseInt(document.getElementById('odometer').value);
+      const localTime = new Date(); // 使用设备本地时间
+
+      // 获取车辆最新里程
+      const vehicleDocRef = db.collection("vehicles").doc(vehicleId);
+      const vehicleDoc = await vehicleDocRef.get();
+      const lastOdometer = vehicleDoc.exists ? vehicleDoc.data().last_odometer || 0 : 0;
+
+      // 里程异常提醒
+      if(newOdometer <= lastOdometer){
+        await db.collection("alerts").add({
+          vehicle: vehicleId,
+          reported_odometer: newOdometer,
+          last_odometer: lastOdometer,
+          time: localTime.toLocaleString() // 使用设备时间
+        });
+      }
+
+      // 添加用车记录
+      const data = {
+        time: localTime.toLocaleString(), // 使用设备时间
+        driver: document.getElementById('driver').value,
+        odometer: newOdometer,
+        destination: document.getElementById('destination').value,
+        purpose: document.getElementById('purpose').value,
+        vehicle: vehicleId,
+        passengers: document.getElementById('passengers').value || "",
+        vehicleDefect: document.getElementById('vehicleDefect').value || "",
+        warningIcon: document.getElementById('warningIcon').value || ""
+      };
+
+      try{
+        await db.collection("vehicle_logs").add(data);
+        // 更新最新里程
+        await vehicleDocRef.set({last_odometer: newOdometer}, {merge:true});
+
+        statusForm.innerText = "提交成功！";
+        form.reset();
+        extraDiv.style.display = "none";
+        toggleBtn.innerText = "更多选项 ▼";
+        loadLogs(); // 更新历史记录
+      }catch(err){
+        console.error(err);
+        statusForm.innerText = "提交失败，请重试";
+      }
+    });
+  </script>
+</body>
+</html>
